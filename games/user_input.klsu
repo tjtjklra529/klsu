@@ -1,0 +1,5 @@
+~~ User Input Example ~~
+print:Welcome_to_KLSU
+input:name]]]What_is_your_name?
+print:Hello_v;name
+print:Nice_to_meet_you!

@@ -1,0 +1,9 @@
+~~ Simple Counter Game ~~
++count is i;0
+print:Starting_counter:
+print:v;count
+
+|||5
++-> +count is i;1
++-> print:Count_increased
++-> print:v;count
