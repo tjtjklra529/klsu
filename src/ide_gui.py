@@ -2,7 +2,7 @@
 KLSU IDE - Main GUI Application
 """
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, simpledialog
 from pathlib import Path
 import os
 from typing import Dict, List
@@ -19,9 +19,10 @@ class KLSUIDEApplication:
         self.root.geometry("1200x700")
         self.root.minsize(800, 500)
         
-        self.open_files: Dict[str, str] = {}  # filename -> content
+        self.open_files: Dict[str, str] = {}
         self.current_file = None
         self.output_lines: List[str] = []
+        self.current_editor = None
         
         self.setup_ui()
         self.setup_menu()
@@ -29,37 +30,31 @@ class KLSUIDEApplication:
     
     def setup_ui(self):
         """Setup main UI layout"""
-        # Main container
         main_container = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
         main_container.pack(fill=tk.BOTH, expand=True)
         
-        # Left pane - Editor
         left_pane = ttk.Frame(main_container)
         main_container.add(left_pane, weight=3)
         
-        # Tabs for open files
         self.notebook = ttk.Notebook(left_pane)
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         
-        # Right pane - Panels
         right_container = ttk.PanedWindow(self.root, orient=tk.VERTICAL)
         main_container.add(right_container, weight=1)
         
-        # Interactables Panel
         interactables_frame = ttk.LabelFrame(right_container, text="Interactables", padding=5)
         right_container.add(interactables_frame, weight=1)
         
-        self.interactables_text = tk.Text(interactables_frame, height=10, width=30, bg='#1e1e1e', fg='#00ffff')
+        self.interactables_text = tk.Text(interactables_frame, height=10, width=30, bg='#1e1e1e', fg='#00ffff', state=tk.DISABLED)
         self.interactables_text.pack(fill=tk.BOTH, expand=True)
         
-        # Output Panel
         output_frame = ttk.LabelFrame(right_container, text="Output", padding=5)
         right_container.add(output_frame, weight=1)
         
         self.output_text = tk.Text(output_frame, height=10, width=30, bg='#000000', fg='#00ff00')
         self.output_text.pack(fill=tk.BOTH, expand=True)
         
-        # Status bar
         self.status_var = tk.StringVar(value="Ready")
         status_bar = ttk.Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN)
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
@@ -71,7 +66,6 @@ class KLSUIDEApplication:
         menubar = tk.Menu(self.root)
         self.root.config(menu=menubar)
         
-        # File Menu
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
         file_menu.add_command(label="New File (Ctrl+N)", command=self.new_file)
@@ -82,26 +76,19 @@ class KLSUIDEApplication:
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.root.quit)
         
-        # Edit Menu
         edit_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Edit", menu=edit_menu)
         edit_menu.add_command(label="Undo (Ctrl+Z)", command=self.undo)
         edit_menu.add_command(label="Redo (Ctrl+Shift+Z)", command=self.redo)
         
-        # Run Menu
         run_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Run", menu=run_menu)
         run_menu.add_command(label="Run Current Tab (Ctrl+Alt+R)", command=self.run_current)
         run_menu.add_command(label="Debug (Ctrl+R)", command=self.debug)
-        run_menu.add_command(label="Run and Debug (Ctrl+Fn+R)", command=self.run_and_debug)
         
-        # View Menu
         view_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="View", menu=view_menu)
-        view_menu.add_command(label="Toggle Interactables (Ctrl+Alt+V I)", command=self.toggle_interactables)
-        view_menu.add_command(label="Toggle Output (Ctrl+Alt+V O)", command=self.toggle_output)
-        view_menu.add_command(label="Toggle Tabs Bar (Ctrl+Alt+V T)", command=self.toggle_tabs)
-        view_menu.add_command(label="Toggle Colour Coding (Ctrl+Alt+V C)", command=self.toggle_syntax)
+        view_menu.add_command(label="Clear Output", command=self.clear_output)
     
     def setup_keybindings(self):
         """Setup keyboard shortcuts"""
@@ -110,27 +97,30 @@ class KLSUIDEApplication:
         self.root.bind('<Control-s>', lambda e: self.save_file())
         self.root.bind('<Control-Shift-S>', lambda e: self.save_file_as())
         self.root.bind('<Control-w>', lambda e: self.close_tab())
-        self.root.bind('<Control-z>', lambda e: self.undo())
-        self.root.bind('<Control-Shift-Z>', lambda e: self.redo())
         self.root.bind('<Control-Alt-r>', lambda e: self.run_current())
-        self.root.bind('<Control-r>', lambda e: self.debug())
+    
+    def _on_tab_changed(self, event=None):
+        """Update current editor when tab changes"""
+        self.current_editor = self.get_current_editor()
     
     def create_new_tab(self, filename: str = None):
         """Create a new editor tab"""
         tab_frame = ttk.Frame(self.notebook)
         
-        # Text editor with scrollbar
         scrollbar = ttk.Scrollbar(tab_frame)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         text_widget = tk.Text(tab_frame, yscrollcommand=scrollbar.set, font=('Consolas', 11), 
-                             bg='#1e1e1e', fg='#e0e0e0', insertbackground='white')
+                             bg='#1e1e1e', fg='#e0e0e0', insertbackground='white', undo=True)
         text_widget.pack(fill=tk.BOTH, expand=True)
         scrollbar.config(command=text_widget.yview)
         
-        # Syntax highlighting
+        # Bind keys to text widget
+        text_widget.bind('<Control-z>', lambda e: self._undo_editor(text_widget))
+        text_widget.bind('<Control-Shift-Z>', lambda e: self._redo_editor(text_widget))
+        text_widget.bind('<Control-Alt-r>', lambda e: self.run_current())
+        
         highlighter = SyntaxHighlighter(text_widget)
-        text_widget.bind('<<Change>>', highlighter.highlight)
         text_widget.bind('<KeyRelease>', highlighter.highlight)
         
         tab_label = filename or f"Untitled-{len(self.open_files) + 1}.klsu"
@@ -138,6 +128,7 @@ class KLSUIDEApplication:
         
         self.open_files[tab_label] = ""
         self.current_file = tab_label
+        self.current_editor = text_widget
         
         return text_widget
     
@@ -235,7 +226,7 @@ class KLSUIDEApplication:
             
             try:
                 self.execute_klsu(code)
-                self.status_var.set("Execution completed")
+                self.status_var.set("Execution completed successfully!")
             except KLSUError as e:
                 self.output_text.insert(tk.END, f"KLSU Error: {e}\n")
                 self.status_var.set(f"Error: {e}")
@@ -247,66 +238,57 @@ class KLSUIDEApplication:
         """Debug mode"""
         self.status_var.set("Debug mode (not yet implemented)")
     
-    def run_and_debug(self):
-        """Run and debug"""
-        self.status_var.set("Run and Debug (not yet implemented)")
+    def clear_output(self):
+        """Clear output panel"""
+        self.output_text.config(state=tk.NORMAL)
+        self.output_text.delete('1.0', tk.END)
     
     def execute_klsu(self, code: str):
         """Execute KLSU code"""
-        # Lex
         lexer = Lexer(code)
         tokens = lexer.tokenize()
         
-        # Parse
         parser = Parser(tokens)
         ast = parser.parse()
         
-        # Interpret
         def output_callback(text):
             self.output_text.config(state=tk.NORMAL)
             self.output_text.insert(tk.END, str(text) + '\n')
             self.output_text.see(tk.END)
+            self.root.update()
         
         def input_callback(prompt):
-            # For now, use messagebox
-            return tk.simpledialog.askstring("Input", prompt)
+            result = simpledialog.askstring("Input", prompt)
+            return result if result is not None else ""
         
         interpreter = Interpreter(output_callback=output_callback, input_callback=input_callback)
         interpreter.execute(ast)
+    
+    def _undo_editor(self, editor):
+        """Undo in editor"""
+        try:
+            editor.edit_undo()
+        except:
+            pass
+    
+    def _redo_editor(self, editor):
+        """Redo in editor"""
+        try:
+            editor.edit_redo()
+        except:
+            pass
     
     def undo(self):
         """Undo action"""
         editor = self.get_current_editor()
         if editor:
-            try:
-                editor.edit_undo()
-            except:
-                pass
+            self._undo_editor(editor)
     
     def redo(self):
         """Redo action"""
         editor = self.get_current_editor()
         if editor:
-            try:
-                editor.edit_redo()
-            except:
-                pass
-    
-    def toggle_interactables(self):
-        """Toggle interactables panel visibility"""
-        pass
-    
-    def toggle_output(self):
-        """Toggle output panel visibility"""
-        pass
-    
-    def toggle_tabs(self):
-        """Toggle tabs visibility"""
-        pass
-    
-    def toggle_syntax(self):
-        """Toggle syntax highlighting"""
-        pass
+            self._redo_editor(editor)
     
     def run(self):
         """Start the application"""
