@@ -1,0 +1,19 @@
+~~ KLSU Window and GUI Demo ~~
+print:========================================
+print:KLSU_GUI_SYSTEM_DEMO
+print:========================================
+
+definition of openWindow is'
++-> window load 64 Ctj35
+
+openWindow:800_by_600_and_KLSU_Game_Demo
+
+label:Arial_and_24_and_black_and_Welcome_to_KLSU
+button:200_by_60_at_300,150
+textbox:Consolas_and_12_and_black_and_#0078d4_and_500x300_and_klsu
+windowElement:sidebar_and_250_by_600_at_0,0
+3dElement:cube_and_400_by_400_at_400,150
+
+print:========================================
+print:GUI_Elements_Created_Successfully!
+print:========================================
